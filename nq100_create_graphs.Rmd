@@ -1,7 +1,7 @@
 ---
 title: "nq100_create_graphs"
 author: "Roy Oelen"
-date: "2025-02-27"
+date: "2025-04-05"
 output: html_document
 ---
 
@@ -332,10 +332,10 @@ for (rw in c('read', 'write')) {
     add_number = T
   ) + xlab('') + ylab('Seek time in ms') + ggtitle(paste('Seek time', rw, 'AS-SSD'))
   # show each plot
-  p_as_seq
-  p_as_4k
-  p_as_4kthr64
-  p_as_seek
+  print(p_as_seq)
+  print(p_as_4k)
+  print(p_as_4kthr64)
+  print(p_as_seek)
   # save as well
   ggsave(filename = paste0(out_plots_loc, '/', 'nq100_asssd_seq', rw, '.pdf'), plot = p_as_seq, height = 5, width = 5)
   ggsave(filename = paste0(out_plots_loc, '/', 'nq100_asssd_4k', rw, '.pdf'), plot = p_as_4k, height = 5, width = 5)
@@ -380,7 +380,7 @@ for (rw in c('read', 'write')) {
     use_distinct_colours = T, 
     label_dict = label_dict, 
     legendless = T, 
-    round_dec = 1, 
+    round_dec = 0, 
     add_number = T
   ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('SEQ1M Q1T1', rw, 'CrystalDiskMark'))
   p_cd_4kq32 <- plot_numbers_to_plot(
@@ -410,10 +410,10 @@ for (rw in c('read', 'write')) {
     add_number = T
   ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('RND4K Q1T1', rw, 'CrystalDiskMark'))
   # show each plot
-  p_cd_seqq8
-  p_cd_seqq1
-  p_cd_4kq32
-  p_cd_4kq1
+  print(p_cd_seqq8)
+  print(p_cd_seqq1)
+  print(p_cd_4kq32)
+  print(p_cd_4kq1)
   # save as well
   ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_seqq8', rw, '.pdf'), plot = p_cd_seqq8, height = 5, width = 5)
   ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_seqq1', rw, '.pdf'), plot = p_cd_seqq1, height = 5, width = 5)
