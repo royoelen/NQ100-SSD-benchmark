@@ -1,0 +1,466 @@
+---
+title: "nq100_create_graphs"
+author: "Roy Oelen"
+date: "2025-04-05"
+output: html_document
+---
+
+```{r header, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+#!/usr/bin/env Rscript
+############################################################################################################################
+# Authors: Roy Oelen
+# Name: nq100_create_graphs.Rmd
+# Function: create plots for NQ100 benchmark
+############################################################################################################################
+```
+
+```{r libraries, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+####################
+# libraries        #
+####################
+
+library(readxl)
+library(roycols)
+library(ggplot2)
+library(cowplot)
+
+
+```
+
+```{r functions, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+####################
+# Functions        #
+####################
+
+
+split_string_with_max_length <- function(string, max_length=15) {
+  # split the string on the space first
+  words <- strsplit(string, ' ')[[1]]
+  # and initial pasted string
+  final_string <- ''
+  # and the temporary string
+  tmp_string <- ''
+  # check each word
+  for (word in words) {
+    # get the lenght of the temporary string
+    tmp_len <- nchar(tmp_string)
+    # get the length of the word
+    word_len <- nchar(word)
+    # length of the final string
+    final_len <- nchar(final_string)
+    # check if adding the next word would make us go over the limit
+    if ((tmp_len + word_len) > max_length) {
+      if (final_len > 0) {
+        # add the temporary word to the final string if it was not empty
+        final_string <- paste(final_string, '\n', tmp_string, sep = '')
+      }
+      else{
+        # if there was not final string yet, it will just become that temporary string
+        final_string <- tmp_string
+      }
+      # reset the temporary string
+      tmp_string <- word
+    }
+    else{
+      # otherwise add it to the temporary string
+      if (tmp_len > 0) {
+        tmp_string <- paste(tmp_string, word)
+      }
+      # or set if the temporary string was empty
+      else{
+        tmp_string <- word
+      }
+    }
+  }
+  # add last word
+  if (nchar(paste(final_string, tmp_string)) > max_length) {
+    if (nchar(final_string) == 0) {
+      final_string <- tmp_string
+    }
+    else if (nchar(tmp_string > 0)) {
+      final_string <- paste(final_string, '\n', tmp_string, sep = '')
+    }
+    else{
+      # nothing the final string is as it is
+    }
+  }
+  else {
+    if (nchar(final_string) == 0) {
+      final_string <- tmp_string
+    }
+    else if(nchar(tmp_string) == 0){
+      # nothing, the final string is as is
+    }
+    else{
+      final_string <- paste(final_string, ' ', tmp_string, sep = '')
+    }
+  }
+  # add the last word
+  return(final_string)
+}
+
+
+split_strings_with_max_length <- function(strings, max_length=15) {
+  strings_split <- sapply(strings, FUN = function(x){
+    split_string_with_max_length(x, max_length)
+  })
+  strings_split <- as.vector(strings_split)
+  return(strings_split)
+}
+
+
+remap_with_label_dict <- function(vector_of_names, relabels) {
+  # get the labels available for renaming
+  labels_available <- names(relabels)
+  # get the ones we cant remap
+  unmappable <- setdiff(unique(vector_of_names), labels_available)
+  # report on those
+  if (length(unmappable) > 0) {
+    print(paste('cannot remap the following names, they will be returned unchanged:', paste(unmappable, collapse = ',')))
+    # and put those in our remapping list as their originals
+    relabels[unmappable] <- unmappable
+  }
+  # now actually do the remapping
+  remapped <- as.vector(unlist(relabels[vector_of_names]))
+  return(remapped)
+}
+
+
+
+#' plot in a barplot the number of DE genes per cell type
+#' 
+#' @param plot_numbers the table containing the number of eenes per cell type
+#' @param category_column which column of the supplied table has the category name
+#' @param number_column which column of the supplied table has the number of DE genes
+#' @param pointless draw the ticks on the bottom of the plot?
+#' @param legendless draw the legend?
+#' @param ylim the range for the y-axis
+#' @param paper_style use the paper style with more whitespace
+#' @param angle_labels angle the x labels 90 degrees?
+#' @param use_distinct_colours use the distinct colour palette instead of ggplot defaults (optional, default T)
+#' @param use_sampling randomly sample colours from the distinct colour palette (optional, default F)
+#' @param color_indices supply specific indices relating to colours to use from the distinct colour palette. Use 'get_available_colours_grid' to get the colours and their indices (optional, unused by default)
+#' @param color_dict specific colors for categories as named list (optional, unused by default)
+#' @param label_dict change names to a more pleasing format
+#' @param make_labels_multiline make labels multiline if they are long
+#' @param x_order to order the values on the x axis
+#' @param add_number add actual number on top of the bar
+#' @param round_dec round numbers to this amount of decimals
+#' @returns a barplot with the number of plots per cell type
+#' 
+plot_numbers_to_plot <- function(plot_numbers, category_column='category', number_column='nr', pointless=F, legendless=F, ylim=NULL, paper_style=T, angle_labels=T, use_distinct_colours=T, use_sampling=F, color_indices=NULL, color_dict=NULL, label_dict=NULL, split_long_labels_to_lines=T, x_order=NULL, add_number=F, round_dec=NULL) {
+  # remap names if requested
+  if (!is.null(label_dict)) {
+    plot_numbers[[category_column]] <- remap_with_label_dict(plot_numbers[[category_column]], label_dict)
+  }
+  # make them multiline
+  if (split_long_labels_to_lines) {
+    plot_numbers[[category_column]] <- split_strings_with_max_length(plot_numbers[[category_column]])
+  }
+  # order the x axis if requested
+  if (!is.null(x_order)) {
+    plot_numbers[[category_column]] <- factor(plot_numbers[[category_column]], levels = x_order)
+  }
+  # round if necessary
+  if (!is.null(round_dec)) {
+    plot_numbers[[number_column]] <- round(plot_numbers[[number_column]], round_dec)
+  }
+  # start plot
+  p <- ggplot(mapping = aes(x = plot_numbers[[category_column]], y = plot_numbers[[number_column]], fill = plot_numbers[[category_column]])) +
+    geom_bar(stat='identity') + xlab(category_column) + ylab(number_column)
+  # options
+  if (use_distinct_colours) {
+    # get the unique possible assigments
+    possible_assignments <- unique(plot_numbers[[category_column]])
+    # put into a list
+    colour_mapping <- roycols::get_color_list(possible_assignments)
+    # add to plot
+    p <- p + scale_fill_manual(values = colour_mapping)
+  }
+  if (!is.null(color_dict)) {
+    # get the color coding dict
+    colour_mapping <- color_dict
+    # also rename here then
+    if (split_long_labels_to_lines) {
+      names(colour_mapping) <- split_strings_with_max_length(names(colour_mapping))
+    }
+    # add to plot
+    p <- p + scale_fill_manual(values = colour_mapping)
+  }
+  if(!is.null(ylim)){
+    p <- p + ylim(ylim)
+  }
+  if(pointless){
+    p <- p + theme(axis.text.x=element_blank(), 
+                   axis.ticks = element_blank())
+  }
+  if(legendless){
+    p <- p + theme(legend.position = 'none')
+  }
+  if (paper_style) {
+    p <- p + theme(panel.border = element_rect(color="black", fill=NA, size=1.1), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), strip.background = element_rect(colour="white", fill="white"))
+  }
+  if (angle_labels) {
+    p <- p + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  }
+  if(add_number) {
+   p <- p + geom_text(aes(label = plot_numbers[[number_column]]), vjust = -0.5, color = "black") + 
+     ylim(c(0, 1.1 * max(plot_numbers[[number_column]])))
+  }
+  return(p)
+}
+
+
+
+```
+
+```{r settings, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+####################
+# Settings         #
+####################
+
+```
+
+```{r path_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+####################
+# Main Code        #
+####################
+
+# location of the benchmark Excel file
+benchmarks_loc <- '~/Documents/NQ100_review/nq100_benchmarks.xlsx'
+# set where to store the results
+out_plots_loc <- '~/Documents/NQ100_review/plots/'
+
+
+```
+
+```{r read_table, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# get sheets
+benchmark_sheets <- readxl::excel_sheets(benchmarks_loc)
+# store each sheet in a list
+benchmarks <- list()
+# check each sheet
+for (sheet_name in benchmark_sheets) {
+  # and put in list
+  benchmarks[[sheet_name]] <- readxl::read_excel(benchmarks_loc, sheet = sheet_name)
+}
+
+
+```
+
+```{r rename_ssds, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# we'll set a dictionary for the sizes, as that was not originally in there
+label_dict <- list(
+  'Crucial MX500' = 'Crucial MX500 4TB', 
+  'Lexar NM620' = 'Lexar NM620 2TB', 
+  'Lexar NM710' = 'Lexar NM710 2TB', 
+  'Lexar NM790' = 'Lexar NM790 2TB', 
+  'Lexar NS100' = 'Lexar NS100 2TB', 
+  'Lexar NQ100' = 'Lexar NQ100 2TB', 
+  'Lexar NQ100' = 'Lexar NQ100 2TB', 
+  'Sandisk Extreme Portable' = 'Sandisk Extreme Portable 1TB', 
+  'Kingston A2000' = 'Kingston A2000 USB10G 1TB'
+)
+
+```
+
+```{r show_asssd_plots, include=TRUE, fig.width=5, fig.height=5}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# store plots also in list
+l_as_all <- list()
+
+# make plots for read and write in AS-SSD
+for (rw in c('read', 'write')) {
+  p_as_seq <- plot_numbers_to_plot(
+    plot_numbers = data.frame(benchmarks[['AS-SSD']][
+      benchmarks[['AS-SSD']][['rw']] == rw &
+      benchmarks[['AS-SSD']][['mode']] == 'SEQ', 
+    ]), 
+    category_column='SSD', 
+    number_column='speed', 
+    use_distinct_colours = T, 
+    label_dict = label_dict, 
+    legendless = T, 
+    round_dec = 0, 
+    add_number = T
+  ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('Sequential', rw, 'AS-SSD'))
+  p_as_4k <- plot_numbers_to_plot(
+    plot_numbers = data.frame(benchmarks[['AS-SSD']][
+      benchmarks[['AS-SSD']][['rw']] == rw &
+      benchmarks[['AS-SSD']][['mode']] == '4K', 
+    ]), 
+    category_column='SSD', 
+    number_column='speed', 
+    use_distinct_colours = T, 
+    label_dict = label_dict, 
+    legendless = T, 
+    round_dec = 1, 
+    add_number = T
+  ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('4K', rw, 'AS-SSD'))
+  p_as_4kthr64 <- plot_numbers_to_plot(
+    plot_numbers = data.frame(benchmarks[['AS-SSD']][
+      benchmarks[['AS-SSD']][['rw']] == rw &
+      benchmarks[['AS-SSD']][['mode']] == '4K-64Thrd', 
+    ]), 
+    category_column='SSD', 
+    number_column='speed', 
+    use_distinct_colours = T, 
+    label_dict = label_dict, 
+    legendless = T, 
+    round_dec = 1, 
+    add_number = T
+  ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('4K-64Thrd', rw, 'AS-SSD'))
+  p_as_seek <- plot_numbers_to_plot(
+    plot_numbers = data.frame(benchmarks[['AS-SSD']][
+      benchmarks[['AS-SSD']][['rw']] == rw &
+      benchmarks[['AS-SSD']][['mode']] == 'Seek', 
+    ]), 
+    category_column='SSD', 
+    number_column='speed', 
+    use_distinct_colours = T, 
+    label_dict = label_dict, 
+    legendless = T, 
+    add_number = T
+  ) + xlab('') + ylab('Seek time in ms') + ggtitle(paste('Seek time', rw, 'AS-SSD'))
+  # show each plot
+  print(p_as_seq)
+  print(p_as_4k)
+  print(p_as_4kthr64)
+  print(p_as_seek)
+  # put in list
+  l_as_all[[paste('p_as_seq', rw)]] <- p_as_seq
+  l_as_all[[paste('p_as_4k', rw)]] <- p_as_4k
+  l_as_all[[paste('p_as_4kthr64', rw)]] <- p_as_4kthr64
+  l_as_all[[paste('p_as_seek', rw)]] <- p_as_seek
+  # save as well
+  ggsave(filename = paste0(out_plots_loc, '/', 'nq100_asssd_seq', rw, '.pdf'), plot = p_as_seq, height = 5, width = 5)
+  ggsave(filename = paste0(out_plots_loc, '/', 'nq100_asssd_4k', rw, '.pdf'), plot = p_as_4k, height = 5, width = 5)
+  ggsave(filename = paste0(out_plots_loc, '/', 'nq100_asssd_4kthr64', rw, '.pdf'), plot = p_as_4kthr64, height = 5, width = 5)
+  ggsave(filename = paste0(out_plots_loc, '/', 'nq100_asssd_seek', rw, '.pdf'), plot = p_as_seek, height = 5, width = 5)
+}
+
+
+```
+
+```{r show_asssd_plots_all, include=TRUE, fig.width=10, fig.height=20}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# finally, show all plots
+p_as_all <- cowplot::plot_grid(plotlist = l_as_all, ncol = 2)
+print(p_as_all)
+# and save
+ggsave(filename = paste0(out_plots_loc, '/', 'nq100_asssd_all.pdf'), plot = p_as_all, height = 20, width = 10)
+
+
+```
+
+```{r show_crystaldiskmark_plots, include=TRUE, fig.width=5, fig.height=5}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# add column of mode and depth together
+benchmarks[['CrystalDiskMark']][['mode_depth']] <- paste(
+  benchmarks[['CrystalDiskMark']][['mode']], 
+  benchmarks[['CrystalDiskMark']][['depth']], 
+  sep = '_'
+)
+
+# store plots also in list
+l_cd_all <- list()
+
+# make plots for read and write in CrystalDiskMark
+for (rw in c('read', 'write')) {
+  p_cd_seqq8 <- plot_numbers_to_plot(
+    plot_numbers = data.frame(benchmarks[['CrystalDiskMark']][
+      benchmarks[['CrystalDiskMark']][['rw']] == rw &
+      benchmarks[['CrystalDiskMark']][['mode_depth']] == 'SEQ1M_Q8T1', 
+    ]), 
+    category_column='SSD', 
+    number_column='speed', 
+    use_distinct_colours = T, 
+    label_dict = label_dict, 
+    legendless = T, 
+    round_dec = 0, 
+    add_number = T
+  ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('SEQ1M Q8T1', rw, 'CrystalDiskMark'))
+  p_cd_seqq1 <- plot_numbers_to_plot(
+    plot_numbers = data.frame(benchmarks[['CrystalDiskMark']][
+      benchmarks[['CrystalDiskMark']][['rw']] == rw &
+      benchmarks[['CrystalDiskMark']][['mode_depth']] == 'SEQ1M_Q1T1', 
+    ]), 
+    category_column='SSD', 
+    number_column='speed', 
+    use_distinct_colours = T, 
+    label_dict = label_dict, 
+    legendless = T, 
+    round_dec = 0, 
+    add_number = T
+  ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('SEQ1M Q1T1', rw, 'CrystalDiskMark'))
+  p_cd_4kq32 <- plot_numbers_to_plot(
+    plot_numbers = data.frame(benchmarks[['CrystalDiskMark']][
+      benchmarks[['CrystalDiskMark']][['rw']] == rw &
+      benchmarks[['CrystalDiskMark']][['mode_depth']] == 'RND4K_Q32T1', 
+    ]), 
+    category_column='SSD', 
+    number_column='speed', 
+    use_distinct_colours = T, 
+    label_dict = label_dict, 
+    legendless = T, 
+    round_dec = 1, 
+    add_number = T
+  ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('RND4K Q32T1', rw, 'CrystalDiskMark'))
+  p_cd_4kq1 <- plot_numbers_to_plot(
+    plot_numbers = data.frame(benchmarks[['CrystalDiskMark']][
+      benchmarks[['CrystalDiskMark']][['rw']] == rw &
+      benchmarks[['CrystalDiskMark']][['mode_depth']] == 'RND4K_Q1T1', 
+    ]), 
+    category_column='SSD', 
+    number_column='speed', 
+    use_distinct_colours = T, 
+    label_dict = label_dict, 
+    legendless = T, 
+    round_dec = 1, 
+    add_number = T
+  ) + xlab('') + ylab('Speed in MB/s') + ggtitle(paste('RND4K Q1T1', rw, 'CrystalDiskMark'))
+  # show each plot
+  print(p_cd_seqq8)
+  print(p_cd_seqq1)
+  print(p_cd_4kq32)
+  print(p_cd_4kq1)
+  # put in the list
+  l_cd_all[[paste('p_cd_seqq8', rw)]] <- p_cd_seqq8
+  l_cd_all[[paste('p_cd_seqq1', rw)]] <- p_cd_seqq1
+  l_cd_all[[paste('p_cd_4kq32', rw)]] <- p_cd_4kq32
+  l_cd_all[[paste('p_cd_4kq1', rw)]] <- p_cd_4kq1
+  # save as well
+  ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_seqq8', rw, '.pdf'), plot = p_cd_seqq8, height = 5, width = 5)
+  ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_seqq1', rw, '.pdf'), plot = p_cd_seqq1, height = 5, width = 5)
+  ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_4kq32', rw, '.pdf'), plot = p_cd_4kq32, height = 5, width = 5)
+  ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_4kq1', rw, '.pdf'), plot = p_cd_4kq1, height = 5, width = 5)
+}
+
+```
+
+```{r show_crystaldiskmark_plots_all, include=TRUE, fig.width=10, fig.height=20}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# finally, show all plots
+p_cd_all <- cowplot::plot_grid(plotlist = l_cd_all, ncol = 2)
+print(p_cd_all)
+# and save
+ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_all.pdf'), plot = p_cd_all, height = 20, width = 10)
+
+
+```
