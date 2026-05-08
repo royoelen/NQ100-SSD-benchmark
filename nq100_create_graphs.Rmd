@@ -352,6 +352,12 @@ for (rw in c('read', 'write')) {
   ggsave(filename = paste0(out_plots_loc, '/', 'nq100_asssd_seek', rw, '.pdf'), plot = p_as_seek, height = 5, width = 5)
 }
 
+
+```
+
+```{r show_asssd_plots_all, include=TRUE, fig.width=10, fig.height=20}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
 # finally, show all plots
 p_as_all <- cowplot::plot_grid(plotlist = l_as_all, ncol = 2)
 print(p_as_all)
@@ -445,10 +451,16 @@ for (rw in c('read', 'write')) {
   ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_4kq1', rw, '.pdf'), plot = p_cd_4kq1, height = 5, width = 5)
 }
 
+```
+
+```{r show_crystaldiskmark_plots_all, include=TRUE, fig.width=10, fig.height=20}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
 # finally, show all plots
 p_cd_all <- cowplot::plot_grid(plotlist = l_cd_all, ncol = 2)
 print(p_cd_all)
 # and save
 ggsave(filename = paste0(out_plots_loc, '/', 'nq100_cdm_all.pdf'), plot = p_cd_all, height = 20, width = 10)
+
 
 ```
